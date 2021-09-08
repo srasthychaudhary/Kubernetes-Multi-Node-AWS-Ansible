@@ -1,0 +1,54 @@
+---
+# tasks file for k8s_slave
+- name: Add kubeadm repositories on Slave Node
+  yum_repository:
+    name: kube
+    description: Kubernetes repo
+    baseurl: https://packages.cloud.google.com/yum/repos/kubernetes-el7-$basearch
+    enabled: 1
+    gpgcheck: 1
+    gpgkey: https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+
+- name: Installing Docker & kubeadm on Slave Node
+  package:
+    name:
+      - docker
+      - kubeadm
+      - iproute-tc
+    state: present
+
+- name: Staring & enabling Docker & kubelet on Slave Node
+  service:
+    name: "{{ item }}"
+    state: started
+    enabled: yes
+  loop: "{{ service_names }}"
+
+- name: Updating Docker cgroup on Slave Node
+  copy:
+    dest: /etc/docker/daemon.json
+    content: |
+      {
+      "exec-opts": ["native.cgroupdriver=systemd"]
+      }
+
+- name: Restart Docker on Slave Node
+  service:
+    name: docker
+    state: restarted
+
+- name: Updating IP tables on Slave Node
+  copy:
+    dest: /etc/sysctl.d/k8s.conf
+    content: |
+      net.bridge.bridge-nf-call-ip6tables = 1
+      net.bridge.bridge-nf-call-iptables = 1
+
+- name: Reloading sysctl on Slave Node
+  command: sysctl --system
+
+- name: Joining the master node
+  command: "{{ hostvars[groups['ec2_master'][0]]['token']['stdout'] }}"
+
+- name: Cleaning Caches on RAM
+  shell: echo 3 > /proc/sys/vm/drop_caches
